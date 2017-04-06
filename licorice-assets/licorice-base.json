@@ -1,0 +1,261 @@
+{
+	"AWSTemplateFormatVersion": "2010-09-09",
+	"Description": "This template will deploy Licorice on your AWS account using AWS Lambda (NodeJs + async/aws-sdk/gm/uuidv4), Amazon DynamoDB, Amazon Simple Storage Service (s3), Amazon CloudFront, AWS CloudFormation, Amazon Route 53, AWS Identity & Access Management Roles",
+		"Parameters" : {
+			"licoriceEnv" : {
+				"Type" : "String",
+				"Default" : "Prod",
+				"AllowedValues" : ["Dev", "Test", "Prod"],
+				"Description" : "Pick the environment type you're deploying onto. Dev/Test/Prod."
+			},
+			"licoriceS3SourceBucketNameParameter" : {
+				"Type" : "String",
+				"Default" : "",
+				"Description" : "Enter the licorice s3 source bucket name."
+			},
+			"licoriceS3TargetBucketNameParameter" : {
+				"Type" : "String",
+				"Default" : "",
+				"Description" : "Enter the licorice s3 target bucket name."
+			},
+			"licoriceDynamoDBTableName" : {
+				"Type" : "String",
+				"Default" : "",
+				"Description" : "Enter the licorice DynamoDb Table name."
+			}
+		},
+		"Resources": {
+			"licoriceLambdaExecutionRole": {
+				"Type": "AWS::IAM::Role",
+				"Properties": {
+					"Path": "/",
+					"RoleName": "licorice",
+					"AssumeRolePolicyDocument": {
+						"Version": "2012-10-17",
+						"Statement": [
+							{
+								"Action": "sts:AssumeRole",
+								"Principal": {
+									"Service": [
+										"lambda.amazonaws.com"
+									]
+								},
+								"Effect": "Allow"
+							}
+						]
+					}
+				}
+			},
+			"licoriceLambdaRole": {
+				"Type": "AWS::IAM::Policy",
+				"Properties": {
+					"PolicyName": "licorice",
+					"PolicyDocument": {
+						"Version" : "2012-10-17",
+						"Statement": [
+							{
+								"Sid": "licoriceStatementS3Buckets",
+								"Effect": "Allow",
+								"Action": [
+									"s3:DeleteObject",
+									"s3:GetObject",
+									"s3:ListBucket",
+									"s3:PutObject",
+									"s3:PutObjectAcl"
+								],
+								"Resource": [
+									{ "Fn::Sub" : "arn:aws:s3:::${licoriceS3SourceBucketNameParameter}/*" },
+									{ "Fn::Sub" : "arn:aws:s3:::${licoriceS3TargetBucketNameParameter}/*" }
+								]
+							},
+							{
+									"Sid": "licoriceStatementDynamodbTable",
+									"Effect": "Allow",
+									"Action": [
+											"dynamodb:DeleteItem",
+											"dynamodb:GetItem",
+											"dynamodb:GetRecords",
+											"dynamodb:PutItem",
+											"dynamodb:Query",
+											"dynamodb:Scan",
+											"dynamodb:UpdateItem"
+									],
+									"Resource": { "Fn::Sub" : "arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${licoriceDynamoDBTableName}" }
+							},
+							{
+								"Sid": "licoricePushToCloudwatchLogs",
+								"Effect": "Allow",
+								"Action": [
+										"logs:CreateLogGroup",
+										"logs:CreateLogStream",
+										"logs:DescribeLogGroups",
+										"logs:DescribeLogStreams",
+										"logs:PutLogEvents",
+										"logs:GetLogEvents",
+										"logs:FilterLogEvents"
+								],
+								"Resource": "*"
+							}
+						]
+					},
+					"Roles": [ { "Ref": "licoriceLambdaExecutionRole" } ]
+				}
+			},
+			"licoriceDynamoDBTable": {
+				"Type": "AWS::DynamoDB::Table",
+				"Properties": {
+					"TableName": { "Ref" : "licoriceDynamoDBTableName" },
+					"AttributeDefinitions": [
+						{
+							"AttributeName": "album",
+							"AttributeType": "S"
+						},
+						{
+							"AttributeName": "artist",
+							"AttributeType": "S"
+						},
+						{
+							"AttributeName": "id",
+							"AttributeType": "S"
+						}
+					],
+					"GlobalSecondaryIndexes": [
+						{
+							"IndexName": "artist-album-index",
+							"Projection": {
+								"ProjectionType": "ALL"
+							},
+							"ProvisionedThroughput": {
+								"WriteCapacityUnits": 25,
+								"ReadCapacityUnits": 25
+							},
+							"KeySchema": [
+								{
+									"KeyType": "HASH",
+									"AttributeName": "artist"
+								},
+								{
+									"KeyType": "RANGE",
+									"AttributeName": "album"
+								}
+							]
+						}
+					],
+					"ProvisionedThroughput": {
+						"WriteCapacityUnits": 25,
+						"ReadCapacityUnits": 25
+					},
+					"KeySchema": [
+						{
+							"KeyType": "HASH",
+							"AttributeName": "id"
+						},
+						{
+							"KeyType": "RANGE",
+							"AttributeName": "artist"
+						}
+					]
+				}
+			},
+			"licoriceLambdaFunction": {
+				"Type": "AWS::Lambda::Function",
+				"Properties": {
+					"FunctionName": "licorice",
+					"Runtime": "nodejs6.1",
+					"Role": {
+						"Fn::GetAtt": [ "licoriceLambdaExecutionRole", "Arn" ] },
+					"Handler": "licorice.handler",
+					"Code": {
+						"S3Bucket": "licorice.nuage.ninja",
+						"S3Key": "licorice-latest.zip"
+					},
+					"Description": "licorice",
+					"Timeout": 30,
+					"MemorySize": 1512,
+					"Environment" : {
+						"Variables": {
+							"licoriceS3SourceBucketName": { "Ref" : "licoriceS3SourceBucketNameParameter" },
+							"licoriceS3TargetBucketName": { "Ref" : "licoriceS3TargetBucketNameParameter" },
+							"licoriceDynamoDBTableName": { "Ref" : "licoriceDynamoDBTableName" },
+							"licoriceEnv" : { "Ref" : "licoriceEnv" }
+						}
+					}
+				}
+			},
+			"licoriceLambdaFunctionPolicy": {
+				"Type" : "AWS::Lambda::Permission",
+				"Properties" : {
+					"Action": "lambda:InvokeFunction",
+					"Principal": "s3.amazonaws.com",
+					"FunctionName": { "Ref": "licoriceLambdaFunction" },
+					"SourceAccount": { "Ref" : "AWS::AccountId" },
+					"SourceArn": { "Fn::Sub": "arn:aws:s3:::${licoriceS3SourceBucketNameParameter}" }
+				}
+			},
+			"licoriceS3BucketSource": {
+				"Type" : "AWS::S3::Bucket",
+				"DependsOn" : "licoriceLambdaFunctionPolicy",
+				"Properties" : {
+				"AccessControl" : "Private",
+				"BucketName" : { "Ref" : "licoriceS3SourceBucketNameParameter" },
+				"NotificationConfiguration" :	{
+					"LambdaConfigurations" : [{
+						"Event" : "s3:ObjectCreated:*",
+						"Filter" : {
+							"S3Key" : {
+								"Rules" : [
+									{
+									"Name" : "suffix",
+									"Value" : "jpg"
+									}
+								]
+							}
+						},
+						"Function" : { "Fn::GetAtt": [ "licoriceLambdaFunction",	"Arn" ] }
+					}
+				]}
+			}
+		},
+		"licoriceS3BucketTarget": {
+			"Type" : "AWS::S3::Bucket",
+			"Properties" : {
+				"AccessControl" : "PublicRead",
+				"WebsiteConfiguration" : {
+						"IndexDocument" : "index.html"
+				},
+			"BucketName" : { "Ref" : "licoriceS3TargetBucketNameParameter" }
+			}
+		},
+		"licoriceS3BucketTargetPublicPolicy" : {
+			"Type" : "AWS::S3::BucketPolicy",
+			"Properties" : {
+				"Bucket" : {"Ref" : "licoriceS3BucketTarget"},
+				"PolicyDocument": {
+					"Statement": [
+						{
+							"Sid": "PublicReadGetObject",
+							"Effect": "Allow",
+							"Principal": "*",
+							"Action": "s3:GetObject",
+							"Resource": { "Fn::Sub": "arn:aws:s3:::${licoriceS3TargetBucketNameParameter}/licorice-photos/*.jpg" }
+						},
+						{
+							"Sid": "PublicReadListBucket",
+							"Effect": "Allow",
+							"Principal": "*",
+							"Action": "s3:ListBucket",
+							"Resource": { "Fn::Sub": "arn:aws:s3:::${licoriceS3TargetBucketNameParameter}" }
+						}
+					]
+				}
+			}
+		},
+		"licoriceCloudwatchLogGroup" : {
+			"Type" : "AWS::Logs::LogGroup",
+			"Properties" : {
+				"LogGroupName" : { "Fn::Sub": "/aws/lambda/${licoriceS3TargetBucketNameParameter}" },
+				"RetentionInDays" : "1"
+			}
+		}
+	}
+}
