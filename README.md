@@ -20,7 +20,7 @@ A minimal, clean photo gallery for the cloud
   One last yet considerably important point: _licorice_ should cost as little as
   possible to run. My target is to be able to run _licorice_ for a year out of
   the free tier of my personal AWS account (excluding the domain name price) and
-  to be installable in a few clicks through AWS CloudFormation.
+  to be installable in a few clicks (with a little help from AWS CloudFormation).
 
 ## 2. what's it using ?
   First things first, a diagram:
@@ -29,13 +29,22 @@ A minimal, clean photo gallery for the cloud
 
   All of _licorice_ relies on the following technologies and services:
 
-    AWS Lambda (NodeJs + async/aws-sdk/gm/crypto)
-    Amazon DynamoDB
-    Amazon Simple Storage Service (s3)
-    Amazon CloudFront
-    AWS CloudFormation
-    Amazon Route 53
-    AWS Identity & Access Management Roles
+    licorice
+    ---
+      AWS CloudFormation
+
+    licorice-lambda-node:
+    ---
+      AWS Lambda (NodeJs + async/aws-sdk/gm/crypto)
+      Amazon DynamoDB
+      Amazon Simple Storage Service (s3)
+
+    licorice-web-template
+    ---
+      Amazon CloudFront
+      Amazon Route 53
+      AWS Identity & Access Management Roles
+      Amazon Cognito
 
   and works very well with Adobe Lightroom, which i use both on pc and mac.
 
@@ -49,9 +58,6 @@ A minimal, clean photo gallery for the cloud
 
     /
     README.md                   # this file
-    go_licorice.sh              # integrate with aws codedeploy, or even jenkins
     licorice-assets             # cfn assets
-    licorice-lambda-node        # licorice lambda code in node.js
-    licorice-web-js-beta
-    licorice-web-template-beta
+    licorice-lambda-node        # licorice lambda code in node.js + modules (ready for lambda)
     licorice.png                # this lovely diagram above, much nicer than my ascii skills
